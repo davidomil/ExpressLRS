@@ -26,7 +26,7 @@
 #endif
 
 #define USE_TX_BACKPACK
-#define PASSTHROUGH_BAUD        115200
+#define PASSTHROUGH_BAUD        230400
 #define GPIO_PIN_DEBUG_RX       16
 #define GPIO_PIN_DEBUG_TX       17
 #define GPIO_PIN_BACKPACK_EN    25
