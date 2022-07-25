@@ -15,8 +15,13 @@
 #if defined(PLATFORM_ESP32)
 #include <Update.h>
 #include <WiFi.h>
-#include <esp_ota_ops.h>
-#include <esp_partition.h>
+
+#include <esp_wifi.h>
+
+extern "C" {
+  esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len, bool en_sys_seq);
+}
+
 #else
 #include <ESP8266WiFi.h>
 
@@ -32,23 +37,21 @@ extern "C"
 
 #endif
 
-
-
-enum RemoteID_OperationalStatus 
+enum RemoteID_OperationalStatus
 {
     RID_OP_Undeclared = 0,
     RID_OP_Ground = 1,
     RID_OP_Airborne = 2,
     RID_OP_Emergency = 3
 };
-enum RemoteID_MessageType 
+enum RemoteID_MessageType
 {
     RID_MT_BasicID = 0,
     RID_MT_Location = 1,
     RID_MT_System = 4,
     RID_MT_MessagePack = 0xf
 };
-enum RemoteID_IDType 
+enum RemoteID_IDType
 {
     RID_ID_None = 0,
     RID_ID_SerialNumber = 1,
@@ -56,7 +59,7 @@ enum RemoteID_IDType
     RID_ID_UTM_AssignedUUID = 3,
     RID_ID_SpecificSessionID = 4
 };
-enum RemoteID_UAType 
+enum RemoteID_UAType
 {
     RID_UA_None = 0,
     RID_UA_Aeroplane = 1,
@@ -67,40 +70,40 @@ enum RemoteID_UAType
     RID_UA_Rocket = 12,
     RID_UA_Other = 15
 };
-enum RemoteID_HighType 
+enum RemoteID_HighType
 {
     RID_HT_AboveTakeOff = 0,
-    RID_HT_AGL = 1 
+    RID_HT_AGL = 1
 };
-enum RemoteID_DirectionSegment 
+enum RemoteID_DirectionSegment
 {
-    RID_DS_Less180  = 0,
+    RID_DS_Less180 = 0,
     RID_DS_More180 = 1
 };
-enum RemoteID_SpeedMultiplier 
+enum RemoteID_SpeedMultiplier
 {
     RID_SM_025 = 0,
     RID_SM_075 = 1
 };
-enum RemoteID_ClassificationType 
+enum RemoteID_ClassificationType
 {
     RID_CT_Undeclared = 0,
     RID_CT_EU = 1
 };
-enum RemoteID_OperatorLocation 
+enum RemoteID_OperatorLocation
 {
     RID_OL_TakeOffLocation = 0,
     RID_OL_LiveGNSS = 1,
     RID_OL_Fixedlocation = 2
 };
-enum RemoteID_UAClassification 
+enum RemoteID_UAClassification
 {
     RID_UAC_Undefined = 0,
     RID_UAC_Open = 1,
     RID_UAC_Specific = 2,
     RID_UAC_Certified = 3
 };
-enum RemoteID_UAClassificationClass 
+enum RemoteID_UAClassificationClass
 {
     RID_AUCC_Undefined = 0,
     RID_AUCC_0 = 1,
@@ -141,15 +144,14 @@ static bool rIDStarted = false;
 // ===== Settings ===== //
 const bool appendSpaces = false; // makes all SSIDs 32 characters long to improve performance
 
-const u_int8_t batch = 2; // number of packets in batch
+const uint8_t batch = 2; // number of packets in batch
 
-const u_int32_t period = 300; // every x m to run 
+const uint32_t period = 300; // every x m to run
 
 const char ssid[] PROGMEM = "REMOTEID";
 
 // run-time variables
 char emptySSID[32];
-uint8_t channelIndex = 0;
 uint8_t macAddr[6];
 uint8_t wifi_channel = 6; // channel
 uint32_t packetSize = 0;
@@ -243,7 +245,6 @@ uint8_t beaconPacket[194] = {
     /*  164 - 167 (timestamp) */ 0, 0, 0, 0,
     /*  168 (reserved) */ 0,
 
-    
     // RSN information
     /*  169 - 170 */ 0x30, 0x18,
     /*  171 - 172 */ 0x01, 0x00,
@@ -254,7 +255,6 @@ uint8_t beaconPacket[194] = {
     /*  189 - 192 */ 0x00, 0x0f, 0xac, 0x02,
     /*  193 - 194 */ 0x00, 0x00,
     };
-
 
 // generates random MAC
 void randomMac()
@@ -356,7 +356,7 @@ static void startWiFi(unsigned long now)
     WiFi.setOutputPower(20.5);
     WiFi.setPhyMode(WIFI_PHY_MODE_11N);
 #elif defined(PLATFORM_ESP32)
-    WiFi.setTxPower(WIFI_POWER_20dBm);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
 #endif
 
     // create empty SSID
@@ -364,7 +364,13 @@ static void startWiFi(unsigned long now)
         emptySSID[i] = ' ';
 
     // for random generator
-    randomSeed(os_random());
+    randomSeed(
+#if defined(PLATFORM_ESP8266)
+        os_random()
+#else
+        esp_random()
+#endif
+        );
 
     // set packetSize
     packetSize = sizeof(beaconPacket);
@@ -374,10 +380,38 @@ static void startWiFi(unsigned long now)
 
     // start WiFi
     WiFi.mode(WIFI_OFF);
+#if defined(PLATFORM_ESP8266)
     wifi_set_opmode(STATION_MODE);
 
     // set channel
     wifi_set_channel(wifi_channel);
+#else
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+
+	esp_wifi_init(&cfg);
+	esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+	// Init dummy AP to get WiFi hardware into a mode where we can send the actual
+	// fake beacon frames.
+    esp_wifi_set_mode(WIFI_MODE_AP);
+    wifi_config_t ap_config = {
+        .ap = {
+            "esp32-remoteid",
+            "dummypassword",
+            0,
+            wifi_channel,
+            WIFI_AUTH_WPA2_PSK,
+            1,
+            4,
+            60000
+        }
+    };
+    
+
+	esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+	esp_wifi_start();
+	esp_wifi_set_ps(WIFI_PS_NONE);
+#endif
 
     rIDStarted = true;
 }
@@ -413,7 +447,6 @@ void HandleRemoteID()
 
         // #endif
 
-
         // go to next channel
         // nextChannel();
 
@@ -438,9 +471,14 @@ void HandleRemoteID()
         // send packet
         if (appendSpaces)
         {
-            for(int k=0;k<batch;k++){
-            wifi_send_pkt_freedom(beaconPacket, packetSize, 0);
-            delay(1);
+            for (int k = 0; k < batch; k++)
+            {
+#if defined(PLATFORM_ESP8266)
+                wifi_send_pkt_freedom(beaconPacket, packetSize, 0);
+#else
+                esp_wifi_80211_tx(WIFI_IF_AP, beaconPacket, packetSize, true);
+#endif
+                delay(1);
             }
         }
 
@@ -448,21 +486,25 @@ void HandleRemoteID()
         else
         {
 
-            uint16_t tmpPacketSize = (packetSize - 32) + ssidLen;                // calc size
-            uint8_t *tmpPacket = new uint8_t[tmpPacketSize];                     // create packet buffer
-            memcpy(&tmpPacket[0], &beaconPacket[0], 38 + ssidLen);               // copy first half of packet into buffer
-            tmpPacket[37] = ssidLen;                                             // update SSID length byte
-            memcpy(&tmpPacket[38 + ssidLen], &beaconPacket[70],packetSize - 70); // copy second half of packet into buffer
+            uint16_t tmpPacketSize = (packetSize - 32) + ssidLen;                 // calc size
+            uint8_t *tmpPacket = new uint8_t[tmpPacketSize];                      // create packet buffer
+            memcpy(&tmpPacket[0], &beaconPacket[0], 38 + ssidLen);                // copy first half of packet into buffer
+            tmpPacket[37] = ssidLen;                                              // update SSID length byte
+            memcpy(&tmpPacket[38 + ssidLen], &beaconPacket[70], packetSize - 70); // copy second half of packet into buffer
 
             // send packet
-            for(int k=0;k<batch;k++){
-            wifi_send_pkt_freedom(tmpPacket, tmpPacketSize, 0);
-            delay(1);
+            for (int k = 0; k < batch; k++)
+            {
+#if defined(PLATFORM_ESP8266)
+                wifi_send_pkt_freedom(tmpPacket, tmpPacketSize, 0);
+#else
+                esp_wifi_80211_tx(WIFI_IF_AP, tmpPacket, tmpPacketSize, true);
+#endif
+                delay(1);
             }
 
             delete tmpPacket; // free memory of allocated buffer
         }
-
 
         counter += 1;
     }
