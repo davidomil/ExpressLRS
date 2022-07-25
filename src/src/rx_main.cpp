@@ -18,6 +18,7 @@
 #include "devLED.h"
 #include "devLUA.h"
 #include "devWIFI.h"
+#include "dev_REMOTEID.h"
 #include "devButton.h"
 #include "devServoOutput.h"
 #include "devVTXSPI.h"
@@ -45,6 +46,9 @@ device_affinity_t ui_devices[] = {
 #endif
 #ifdef HAS_WIFI
   {&WIFI_device, 1},
+#endif
+#ifdef HAS_REMOTEID
+  {&REMOTEID_device, 1},
 #endif
 #ifdef HAS_BUTTON
   {&Button_device, 1},

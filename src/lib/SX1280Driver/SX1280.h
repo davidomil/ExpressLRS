@@ -42,6 +42,9 @@ public:
     void ClearIrqStatus(uint16_t irqMask, SX1280_Radio_Number_t radioNumber);
 
     void GetStatus(SX1280_Radio_Number_t radioNumber);
+    void SetMode(SX1280_RadioOperatingModes_t OPmode, SX1280_Radio_Number_t radioNumber);
+    bool RXnbISR(uint16_t irqStatus, SX1280_Radio_Number_t radioNumber); // ISR for non-blocking RX routine
+    void TXnbISR(); // ISR for non-blocking TX routine
 
     uint8_t GetRxBufferAddr(SX1280_Radio_Number_t radioNumber);
     int8_t GetRssiInst();
@@ -54,7 +57,6 @@ private:
     SX1280_Radio_Number_t processingPacketRadio;
     SX1280_Radio_Number_t lastSuccessfulPacketRadio = SX1280_Radio_1;
 
-    void SetMode(SX1280_RadioOperatingModes_t OPmode, SX1280_Radio_Number_t radioNumber);
     void SetFIFOaddr(uint8_t txBaseAddr, uint8_t rxBaseAddr);
 
     // LoRa functions
@@ -78,6 +80,5 @@ private:
     static void IsrCallback_1();
     static void IsrCallback_2();
     static void IsrCallback(SX1280_Radio_Number_t radioNumber);
-    bool RXnbISR(uint16_t irqStatus, SX1280_Radio_Number_t radioNumber); // ISR for non-blocking RX routine
-    void TXnbISR(); // ISR for non-blocking TX routine
+    
 };
