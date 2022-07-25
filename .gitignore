@@ -6,3 +6,6 @@ src/src/fhss_freqs.h
 src/.vscode
 src/data/*.ini
 src/data/*.json
+.DS_Store
+firmware.bin
+workspace.code-workspace
